@@ -19,14 +19,15 @@ class TorClientEndpointStringParser(object):
 
         assert (host and port) is not None
 
-        socks_addr = '127.0.0.1'
-        socks_port = 9050
-        TCPPoint   = TCP4ClientEndpoint(reactor, socks_addr, socks_port)
+        torSocksEndpoint = TCP4ClientEndpoint(reactor, '127.0.0.1', 9050)
+        socks5ClientEndpoint = SOCKS5ClientEndpoint(host, port, torSocksEndpoint)
 
-        socks5ClientEndpoint = SOCKS5ClientEndpoint(host, port, TCPPoint)        
         return socks5ClientEndpoint
 
 
     def parseStreamClient(self, *args, **kwargs):
         return self._parseClient(*args, **kwargs)
 
+
+
+torClientEndpointStringParser = TorClientEndpointStringParser()
