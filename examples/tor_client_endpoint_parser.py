@@ -20,7 +20,7 @@ class TorClientEndpointStringParser(object):
         assert (host and port) is not None
 
         torSocksEndpoint = TCP4ClientEndpoint(reactor, '127.0.0.1', 9050)
-        socks5ClientEndpoint = SOCKS5ClientEndpoint(host, port, torSocksEndpoint)
+        socks5ClientEndpoint = SOCKS5ClientEndpoint(host, int(port), torSocksEndpoint)
 
         return socks5ClientEndpoint
 
