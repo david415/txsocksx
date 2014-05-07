@@ -20,6 +20,10 @@ from twisted.internet.interfaces import IStreamClientEndpointStringParser
 from twisted.internet.endpoints import clientFromString
 from twisted.internet.endpoints import TCP4ClientEndpoint
 
+# use by TorClientEndpoint for socks port retry logic
+from twisted.internet import error
+import itertools
+
 import txsocksx.constants as c, txsocksx.errors as e
 from txsocksx import grammar
 
@@ -363,20 +367,65 @@ class SOCKS4ClientEndpoint(object):
         return d
 
 
+
+@implementer(interfaces.IStreamClientEndpoint)
+class TorClientEndpoint(object):
+    """An endpoint which attempts to establish a SOCKS5 connection
+    with the system tor process by iterating over a list of ports
+    that tor might be listening to.
+
+    :param host: The hostname to connect to.
+    This of course can be a Tor Hidden Service onion address.
+
+    :param port: The tcp port or Tor Hidden Service port.
+
+    """
+
+    socks_ports_to_try = [9050, 9150]
+
+    def __init__(self, host, port):
+        if host is None or port is None:
+            raise ValueError('host and port must be specified')
+
+        self.host = host
+        self.port = port
+        self.socksPortIter = itertools.chain(self.socks_ports_to_try)
+
+    def connect(self, protocolfactory):
+        self.protocolfactory = protocolfactory
+        self.socksPort       = self.socksPortIter.next()
+
+        d = defer.succeed(self)
+        d.addCallback(self._try_connect).addErrback(self._retry_socks_port)
+        return d
+
+    def _try_connect(self, arg):
+        torSocksEndpoint = TCP4ClientEndpoint(reactor, '127.0.0.1', self.socksPort)
+        socks5ClientEndpoint = SOCKS5ClientEndpoint(self.host, self.port, torSocksEndpoint)
+        d = socks5ClientEndpoint.connect(self.protocolfactory)
+        d.addErrback(self._retry_socks_port)
+        return d
+
+    def _retry_socks_port(self, failure):
+        failure.trap(error.ConnectError)
+        try:
+            self.socksPort = self.socksPortIter.next()
+        except StopIteration:
+            return failure
+        d = defer.succeed(self)
+        d.addCallback(self._try_connect).addErrback(self._retry_socks_port)
+        return d
+
+
 @implementer(IPlugin, IStreamClientEndpointStringParser)
 class TorClientEndpointStringParser(object):
     prefix = "tor"
 
     def _parseClient(self, host=None, port=None):
-
         if port is not None:
             port = int(port)
 
-        torSocksEndpoint     = TCP4ClientEndpoint(reactor, '127.0.0.1', 9050)
-        socks5ClientEndpoint = SOCKS5ClientEndpoint(host, port, torSocksEndpoint)
-
-        return socks5ClientEndpoint
-
+        return TorClientEndpoint(host, port)
 
     def parseStreamClient(self, *args, **kwargs):
         return self._parseClient(*args, **kwargs)
