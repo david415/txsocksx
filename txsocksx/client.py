@@ -22,7 +22,6 @@ from twisted.internet.endpoints import TCP4ClientEndpoint
 
 # use by TorClientEndpoint for socks port retry logic
 from twisted.internet import error
-import itertools
 
 import txsocksx.constants as c, txsocksx.errors as e
 from txsocksx import grammar
@@ -389,17 +388,16 @@ class TorClientEndpoint(object):
 
         self.host = host
         self.port = port
-        self.socksPortIter = itertools.chain(self.socks_ports_to_try)
+        self.socksPortIter = iter(self.socks_ports_to_try)
 
     def connect(self, protocolfactory):
         self.protocolfactory = protocolfactory
         self.socksPort       = self.socksPortIter.next()
 
-        d = defer.succeed(self)
-        d.addCallback(self._try_connect).addErrback(self._retry_socks_port)
+        d = self._try_connect()
         return d
 
-    def _try_connect(self, arg):
+    def _try_connect(self):
         torSocksEndpoint = TCP4ClientEndpoint(reactor, '127.0.0.1', self.socksPort)
         socks5ClientEndpoint = SOCKS5ClientEndpoint(self.host, self.port, torSocksEndpoint)
         d = socks5ClientEndpoint.connect(self.protocolfactory)
@@ -412,8 +410,8 @@ class TorClientEndpoint(object):
             self.socksPort = self.socksPortIter.next()
         except StopIteration:
             return failure
-        d = defer.succeed(self)
-        d.addCallback(self._try_connect).addErrback(self._retry_socks_port)
+        d = self._try_connect()
+        d.addErrback(self._retry_socks_port)
         return d
 
 
