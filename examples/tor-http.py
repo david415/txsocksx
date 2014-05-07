@@ -5,7 +5,7 @@ from twisted.internet.endpoints import clientFromString
 
 class GETSlash(Protocol):
     def connectionMade(self):
-        self.transport.write("GET / HTTP/1.1\n\r\n\r")
+        self.transport.write("GET / HTTP/1.1\r\nHost: timaq4ygg2iegci7.onion\r\n\r\n")
 
     def buildProtocol(self):
         return self
