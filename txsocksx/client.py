@@ -13,6 +13,13 @@ from parsley import makeProtocol, stack
 from twisted.internet import protocol, defer, interfaces
 from zope.interface import implementer
 
+# needed for TorClientEndpointStringParser
+from twisted.plugin import IPlugin
+from twisted.internet import reactor
+from twisted.internet.interfaces import IStreamClientEndpointStringParser
+from twisted.internet.endpoints import clientFromString
+from twisted.internet.endpoints import TCP4ClientEndpoint
+
 import txsocksx.constants as c, txsocksx.errors as e
 from txsocksx import grammar
 
@@ -209,6 +216,9 @@ class SOCKS5ClientEndpoint(object):
     def __init__(self, host, port, proxyEndpoint, methods={'anonymous': ()}):
         if not methods:
             raise ValueError('no auth methods were specified')
+        if host is None or port is None:
+            raise ValueError('host and port must be specified')
+
         self.host = host
         self.port = port
         self.proxyEndpoint = proxyEndpoint
@@ -351,3 +361,22 @@ class SOCKS4ClientEndpoint(object):
         d = self.proxyEndpoint.connect(proxyFac)
         d.addCallback(lambda proto: proxyFac.deferred)
         return d
+
+
+@implementer(IPlugin, IStreamClientEndpointStringParser)
+class TorClientEndpointStringParser(object):
+    prefix = "tor"
+
+    def _parseClient(self, host=None, port=None):
+
+        if port is not None:
+            port = int(port)
+
+        torSocksEndpoint     = TCP4ClientEndpoint(reactor, '127.0.0.1', 9050)
+        socks5ClientEndpoint = SOCKS5ClientEndpoint(host, port, torSocksEndpoint)
+
+        return socks5ClientEndpoint
+
+
+    def parseStreamClient(self, *args, **kwargs):
+        return self._parseClient(*args, **kwargs)
