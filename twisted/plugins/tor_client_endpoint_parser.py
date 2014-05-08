@@ -1,4 +1,4 @@
 
-from txsocksx.client import TorClientEndpointStringParser
+from txsocksx.endpoint_parsers import TorClientEndpointStringParser
 
 torClientEndpointStringParser = TorClientEndpointStringParser()

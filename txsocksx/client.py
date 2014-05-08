@@ -5,23 +5,13 @@
 
 """
 
-
 import socket
 import struct
 
 from parsley import makeProtocol, stack
-from twisted.internet import protocol, defer, interfaces
+from twisted.internet import reactor, protocol, defer, interfaces, error
 from zope.interface import implementer
-
-# needed for TorClientEndpointStringParser
-from twisted.plugin import IPlugin
-from twisted.internet import reactor
-from twisted.internet.interfaces import IStreamClientEndpointStringParser
-from twisted.internet.endpoints import clientFromString
 from twisted.internet.endpoints import TCP4ClientEndpoint
-
-# use by TorClientEndpoint for socks port retry logic
-from twisted.internet import error
 
 import txsocksx.constants as c, txsocksx.errors as e
 from txsocksx import grammar
@@ -421,17 +411,3 @@ class TorClientEndpoint(object):
         d = self._try_connect()
         d.addErrback(self._retry_socks_port)
         return d
-
-
-@implementer(IPlugin, IStreamClientEndpointStringParser)
-class TorClientEndpointStringParser(object):
-    prefix = "tor"
-
-    def _parseClient(self, host=None, port=None):
-        if port is not None:
-            port = int(port)
-
-        return TorClientEndpoint(host, port)
-
-    def parseStreamClient(self, *args, **kwargs):
-        return self._parseClient(*args, **kwargs)
