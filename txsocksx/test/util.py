@@ -7,6 +7,35 @@ from twisted.python import failure
 from twisted.test import proto_helpers
 from twisted.trial import unittest
 
+def FakeTorSocksEndpointGenerator(*args, **kw):
+    return FakeTorSocksEndpoint(*args, **kw)
+
+class FakeTorSocksEndpoint(object):
+    def __init__(self, *args, **kw):
+        self.host     = args[1]
+        self.port     = args[2]
+        if kw.has_key('failure'):
+            self.failure = kw['failure']
+        else:
+            self.failure = None
+        if kw.has_key('acceptPort'):
+            self.acceptPort = kw['acceptPort']
+        else:
+            self.acceptPort = None
+
+    def connect(self, fac):
+        self.factory = fac
+        if self.acceptPort:
+            if self.port != self.acceptPort:
+                return defer.fail(self.failure)
+        else:
+            if self.failure:
+                return defer.fail(self.failure)
+        self.proto = fac.buildProtocol(None)
+        transport = proto_helpers.StringTransport()
+        self.proto.makeConnection(transport)
+        self.transport = transport
+        return defer.succeed(self.proto)
 
 class FakeEndpoint(object):
     def __init__(self, failure=None):

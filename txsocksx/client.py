@@ -366,6 +366,12 @@ class SOCKS4ClientEndpoint(object):
         return d
 
 
+def DefaultTCP4EndpointGenerator(*args, **kw):
+    """
+    Default generator used to create client-side TCP4ClientEndpoint instances.
+    We do this to make the unit tests work...
+    """
+    return TCP4ClientEndpoint(*args, **kw)
 
 @implementer(interfaces.IStreamClientEndpoint)
 class TorClientEndpoint(object):
@@ -382,12 +388,14 @@ class TorClientEndpoint(object):
 
     socks_ports_to_try = [9050, 9150]
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, proxyEndpointGenerator=DefaultTCP4EndpointGenerator):
         if host is None or port is None:
             raise ValueError('host and port must be specified')
 
         self.host = host
         self.port = port
+        self.proxyEndpointGenerator = proxyEndpointGenerator
+
         self.socksPortIter = iter(self.socks_ports_to_try)
 
     def connect(self, protocolfactory):
@@ -398,8 +406,8 @@ class TorClientEndpoint(object):
         return d
 
     def _try_connect(self):
-        torSocksEndpoint = TCP4ClientEndpoint(reactor, '127.0.0.1', self.socksPort)
-        socks5ClientEndpoint = SOCKS5ClientEndpoint(self.host, self.port, torSocksEndpoint)
+        self.torSocksEndpoint = self.proxyEndpointGenerator(reactor, '127.0.0.1', self.socksPort)
+        socks5ClientEndpoint = SOCKS5ClientEndpoint(self.host, self.port, self.torSocksEndpoint)
         d = socks5ClientEndpoint.connect(self.protocolfactory)
         d.addErrback(self._retry_socks_port)
         return d
