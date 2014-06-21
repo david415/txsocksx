@@ -363,6 +363,26 @@ def DefaultTCP4EndpointGenerator(*args, **kw):
     """
     return TCP4ClientEndpoint(*args, **kw)
 
+
+def maybeGetLaunchedTorSocksPort():
+    try:
+        from txtorcon.endpoints import _global_tor_lock
+        from txtorcon.endpoints import _global_tor_config
+        socks_port_deferred = _global_tor_lock.acquire()
+        try:
+            def maybe_tor_socks(ignored):
+                if _global_tor_config is not None:
+                    if _global_tor_config.SOCKSPort != 0:
+                        return _global_tor_config.SOCKSPort
+                return None
+            socks_port_deferred.addCallback(maybe_tor_socks)
+        finally:
+            _global_tor_lock.release()
+    except ImportError:
+        socks_port_deferred = defer.succeed(None)
+    return socks_port_deferred
+
+
 @implementer(interfaces.IStreamClientEndpoint)
 class TorClientEndpoint(object):
     """An endpoint which attempts to establish a SOCKS5 connection
@@ -390,31 +410,17 @@ class TorClientEndpoint(object):
 
     def connect(self, protocolfactory):
         self.protocolfactory = protocolfactory
-        self.socksPort       = self.socksPortIter.next()
+        socksPortDeferred = maybeGetLaunchedTorSocksPort()
+        socksPortDeferred.addCallback(self._add_socks_port)
+        socksPortDeferred.addCallback(self._try_connect)
+        return socksPortDeferred
 
-        try:
-            from txtorcon.torconfig import torDeferredDispatcher
-            if torDeferredDispatcher.is_started:
-                tor_port_deferred = defer.Deferred()
-                tor_port_deferred.addCallback(self._add_socks_from_dispatcher)
-                connect_deferred = self._try_connect()
-                tor_port_deferred.addCallback(lambda ign: connect_deferred)
-                torDeferredDispatcher.fireWhenReady(tor_port_deferred)
-            else:
-                tor_port_deferred = defer.succeed(None)
-                connect_deferred = self._try_connect()
-                tor_port_deferred.addCallback(lambda ign: connect_deferred)
-        except ImportError:
-            tor_port_deferred = defer.succeed(None)
-            connect_deferred = self._try_connect()
-            tor_port_deferred.addCallback(lambda ign: connect_deferred)
+    def _add_socks_port(self, socks_port):
+        if socks_port is not None:
+            self.socks_ports_to_try = self.socks_ports_to_try + [socks_port]
+            self.socksPortIter = iter(reversed(self.socks_ports_to_try))
 
-        return tor_port_deferred
-
-    def _add_socks_from_dispatcher(self, tor_ports):
-        self.socks_ports_to_try = [tor_ports[1]] + self.socks_ports_to_try
-
-    def _try_connect(self):
+    def _try_connect(self, ignored):
         self.socksPort = self.socksPortIter.next()
         self.torSocksEndpoint = self.proxyEndpointGenerator(reactor, '127.0.0.1', self.socksPort)
         socks5ClientEndpoint = SOCKS5ClientEndpoint(self.host, self.port, self.torSocksEndpoint)
@@ -428,6 +434,6 @@ class TorClientEndpoint(object):
             self.socksPort = self.socksPortIter.next()
         except StopIteration:
             return failure
-        d = self._try_connect()
+        d = self._try_connect(None)
         d.addErrback(self._retry_socks_port)
         return d
