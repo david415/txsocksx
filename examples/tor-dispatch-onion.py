@@ -38,25 +38,14 @@ def setup_failed(arg):
 
 def setup_complete(listeningPort):
     print "Received an IListeningPort %s" % (listeningPort,)
-    print "yo"
+    print "..whose `getHost` gives us a %s" % listeningPort.getHost()
+
     address = listeningPort.getHost()
-    print "..whose `getHost` gives us a %s" % address
+    host = address.host
+    port = address.port
 
-    host = address.onion_uri
-    port = address.onion_port
-
-    print "try_connect"
-
-    def get_available_port():
-        return txtorcon.endpoints.available_tcp_port(reactor)
-
-    def set_socks_port(port):
-        txtorcon.endpoints._global_tor_config.SOCKSPort = port
-        return txtorcon.endpoints._global_tor_config.save()
-
-    def try_connect(ignore):
+    def try_connect():
         print "try_connect %s %s" % (host, port)
-
         torEndpoint = clientFromString(reactor, "tor:host=%s:port=%s" % (host, port))
         d = torEndpoint.connect(GETSlashFactory())
         return d
@@ -64,16 +53,12 @@ def setup_complete(listeningPort):
     def retry_connect(failure):
         print "retry_connect"
         failure.trap(txsocksx.errors.HostUnreachable)
-        return try_connect(None).addErrback(retry_connect)
+        return try_connect().addErrback(retry_connect)
 
-    get_available_port().addCallback(set_socks_port).addCallback(try_connect).addErrback(retry_connect)
+    try_connect().addErrback(retry_connect)
 
-def progress(percent, tag, message):
-    bar = int(percent / 10)
-    print '[%s%s] %s' % ('#' * bar, '.' * (10 - bar), message)
 
 hs_endpoint = serverFromString(reactor, "onion:80")
-txtorcon.IProgressProvider(hs_endpoint).add_progress_listener(progress)
 d = hs_endpoint.listen(site)
 d.addCallbacks(setup_complete, setup_failed)
 
